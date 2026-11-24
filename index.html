@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web GIS Flores Timur & Kota Malang - GeoServer & LeafletJS</title>
+
+    <!-- CSS Leaflet -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+        }
+
+        #map {
+            width: 100%;
+            height: 100vh;
+        }
+
+        /* Styling 2 kotak legenda */
+        .Legend {
+            background: white;
+            padding: 8px 12px;
+            border-radius: 5px;
+            box-shadow: 0 0 8px rgba(0, 0, 0, 0.25);
+            max-height: 25vh;
+            overflow-y: auto;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+
+        .Legend strong {
+            display: block;
+            margin-bottom: 4px;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 3px;
+            color: #222;
+        }
+
+        /* Styling tombol navigasi cepat antar wilayah */
+        .nav-lokasi {
+            position: absolute;
+            top: 10px;
+            left: 55px;
+            z-index: 1000;
+            background: white;
+            padding: 6px 8px;
+            border-radius: 5px;
+            box-shadow: 0 0 8px rgba(0, 0, 0, 0.25);
+            display: flex;
+            gap: 6px;
+        }
+
+        .nav-lokasi button {
+            background-color: #0d6efd;
+            color: white;
+            border: none;
+            padding: 6px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .nav-lokasi button:hover {
+            background-color: #0b5ed7;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- Tombol Pintas Lokasi -->
+    <div class="nav-lokasi">
+        <button onclick="keMalang()">Kota Malang</button>
+        <button onclick="keFlores()">Flores Timur</button>
+        <button onclick="lihatSemua()">Tampilkan Semua</button>
+    </div>
+
+    <div id="map"></div>
+
+    <!-- JS Leaflet & Plugin L.Geoserver.js -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="lib/L.Geoserver.js"></script>
+
+    <script>
+        // 1. Inisialisasi Peta & Tampilan Awal Dua Wilayah
+        var map = L.map("map");
+        var batasDuaWilayah = [
+            [-8.70, 112.50], // Batas barat daya (Kota Malang)
+            [-7.80, 123.40]  // Batas timur laut (Flores Timur)
+        ];
+        map.fitBounds(batasDuaWilayah);
+
+        function keMalang() {
+            map.setView([-7.975, 112.63], 13);
+        }
+
+        function keFlores() {
+            map.setView([-8.3249682, 123.0053329], 11);
+        }
+
+        function lihatSemua() {
+            map.fitBounds(batasDuaWilayah);
+        }
+
+        // 2. Basemap OpenStreetMap dan Esri World Imagery
+        var osm = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+            maxZoom: 19,
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        });
+        osm.addTo(map);
+
+        var esriImagery = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+            maxZoom: 19,
+            attribution: "Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community",
+        });
+
+        // 3. Layer WMS Flores Timur (Shapefile)
+        var wmsLayer1 = L.Geoserver.wms("http://localhost:8080/geoserver/wms", {
+            layers: "pgweb1:batas_kecamatan",
+            transparent: true,
+        });
+        wmsLayer1.addTo(map);
+
+        var wmsLayer2 = L.Geoserver.wms("http://localhost:8080/geoserver/wms", {
+            layers: "pgweb1:jalan",
+            transparent: true,
+        });
+        wmsLayer2.addTo(map);
+
+        var wmsLayer3 = L.Geoserver.wms("http://localhost:8080/geoserver/wms", {
+            layers: "pgweb1:toponimi1",
+            transparent: true,
+        });
+        wmsLayer3.addTo(map);
+
+        // 4. Layer WMS Kota Malang (MySQL)
+        // Ganti ke "pgweb1:view_rumahsakit" jika nama layer di GeoServer memakai view_rumahsakit
+        var namaLayerMalang = "pgweb1:rumahsakit";
+
+        var wmsLayer4 = L.Geoserver.wms("http://localhost:8080/geoserver/wms", {
+            layers: namaLayerMalang,
+            transparent: true,
+        });
+        wmsLayer4.addTo(map);
+
+        // 5. Menampilkan 2 Kotak Legenda (Flores Timur & Kota Malang)
+        // Kotak Legenda 1: Flores Timur
+        var legendFlores = L.control({ position: "bottomleft" });
+        legendFlores.onAdd = function (map) {
+            var div = L.DomUtil.create("div", "info Legend");
+            div.innerHTML = "<strong>Legenda Flores Timur</strong>";
+
+            var layersFlores = [
+                "pgweb1:batas_kecamatan",
+                "pgweb1:jalan",
+                "pgweb1:toponimi1"
+            ];
+
+            layersFlores.forEach(function (layerName) {
+                var url = "http://localhost:8080/geoserver/wms?REQUEST=GetLegendGraphic&VERSION=1.1.0&FORMAT=image/png&LAYER=" + layerName;
+                div.innerHTML += '<img src="' + url + '" alt="Legenda ' + layerName + '" style="display:block; margin-top:4px;">';
+            });
+
+            return div;
+        };
+        legendFlores.addTo(map);
+
+        // Kotak Legenda 2: Kota Malang
+        var legendMalang = L.control({ position: "bottomleft" });
+        legendMalang.onAdd = function (map) {
+            var div = L.DomUtil.create("div", "info Legend");
+            div.innerHTML = "<strong>Legenda Kota Malang</strong>";
+
+            var url = "http://localhost:8080/geoserver/wms?REQUEST=GetLegendGraphic&VERSION=1.1.0&FORMAT=image/png&LAYER=" + namaLayerMalang;
+            div.innerHTML += '<img src="' + url + '" alt="Legenda Rumah Sakit Malang" style="display:block; margin-top:4px;">';
+
+            return div;
+        };
+        legendMalang.addTo(map);
+
+        // 6. Layer Control
+        var baseMaps = {
+            "OpenStreetMap": osm,
+            "Esri Imagery": esriImagery
+        };
+
+        var overlayMaps = {
+            "Batas Kecamatan (Flores)": wmsLayer1,
+            "Jalan (Flores)": wmsLayer2,
+            "Toponimi (Flores)": wmsLayer3,
+            "Rumah Sakit (Malang)": wmsLayer4
+        };
+
+        var layerControl = L.control.layers(baseMaps, overlayMaps).addTo(map);
+    </script>
+
+</body>
+
+</html>
